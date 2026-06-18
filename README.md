@@ -40,7 +40,7 @@ API_ENDPOINT=http://herald.your-host:8080
 ```
  
 ---
-## Roadmap
+## Vesion for Herald
  
 ### V2 — Security control plane
 - Allowlist enforcement —> only permitted upstream domains pass
