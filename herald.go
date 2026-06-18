@@ -1,10 +1,12 @@
 package main
 
 import (
-	"github.com/c0d3x-io/herald/internal/config"
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/c0d3x-io/herald/internal/config"
+	"github.com/c0d3x-io/herald/internal/proxy"
 )
 
 func main() {
@@ -31,6 +33,13 @@ func main() {
 		w.Write([]byte("Herald:ok"))
 	})
 
-	http.ListenAndServe(":8080", server)
+	// Proxy
+	herald, err := proxy.New(cfg.UpstreamURL, logger)
+	if err != nil {
+		logger.Error("failed to create proxy", "error", err)
+		os.Exit(1)
+	}
 
+	server.Handle("/", herald)
+	http.ListenAndServe(":8080", server)
 }
