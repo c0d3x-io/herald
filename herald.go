@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/c0d3x-io/herald/internal/config"
 	"github.com/c0d3x-io/herald/internal/proxy"
@@ -30,7 +31,7 @@ func main() {
 	server := http.NewServeMux()
 	server.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Herald:ok"))
+		_, _ = w.Write([]byte("Herald:ok")) // ignore error
 	})
 
 	// Proxy
@@ -41,5 +42,19 @@ func main() {
 	}
 
 	server.Handle("/", herald)
-	http.ListenAndServeTLS(":8080", "localhost+2.pem", "localhost+2-key.pem", server)
+
+	// Timeouts - Security Practices
+	srv := &http.Server{
+		Addr:         cfg.ListenAddr,
+		Handler:      server,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  90 * time.Second,
+	}
+
+	logger.Info("listening", "addr", cfg.ListenAddr)
+	if err := srv.ListenAndServeTLS("localhost+2.pem", "localhost+2-key.pem"); err != nil {
+		logger.Error("server faild", "error", err)
+		os.Exit(1)
+	}
 }
