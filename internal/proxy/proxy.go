@@ -14,37 +14,30 @@ type Herald struct {
 	upstream *url.URL
 }
 
-// creates a Herald proxy that forwards all traffic to upstreamURL.
+// New creates a Herald proxy that forwards all traffic to upstreamURL.
 func New(upstreamURL string, logger *slog.Logger) (*Herald, error) {
 	targetURL, err := url.Parse(upstreamURL)
 	if err != nil {
 		return nil, err
 	}
 
-	rp := httputil.NewSingleHostReverseProxy(targetURL)
-
-	rp.Transport = &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+	// Core fix: Initialize the ReverseProxy directly.
+	// This avoids setting the implicit legacy Director field, preventing the runtime panic.
+	rp := &httputil.ReverseProxy{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		},
-	}
-	rp.Rewrite = func(pr *httputil.ProxyRequest) {
-		// Capture the exact domain Python is trying to reach (e.g., oauth2.googleapis.com)
-		targetHost := pr.In.URL.Host
-		targetScheme := pr.In.URL.Scheme
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			// SetURL safely routes the request to your target upstream.
+			// It updates the Scheme, Host, Path, and the outgoing Host header automatically.
+			pr.SetURL(targetURL)
 
-		if targetScheme == "" {
-			targetScheme = "https" // Default fallback for secure traffic
-		}
-
-		// Dynamically rewrite outbound target parameters on the fly
-		pr.Out.URL.Scheme = targetScheme
-		pr.Out.URL.Host = targetHost
-		pr.Out.Host = targetHost
-
-		// Set standard upstream tracking headers
-		pr.SetXForwarded()
+			// Set standard tracking headers (X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto)
+			pr.SetXForwarded()
+		},
 	}
 
 	return &Herald{
@@ -52,11 +45,9 @@ func New(upstreamURL string, logger *slog.Logger) (*Herald, error) {
 		rp:       rp,
 		logger:   logger,
 	}, nil
-
 }
 
-// ServeHTTP handles incoming requests.
-// V1: logs the request and proxies it upstream.
+// ServeHTTP handles incoming requests, logs them, and forwards them upstream.
 func (h *Herald) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("Proxying request",
 		"method", r.Method,
@@ -64,4 +55,7 @@ func (h *Herald) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"remote", r.RemoteAddr,
 		"upstream", h.upstream.Host,
 	)
+
+	// Passes the client connection over to the reverse proxy engine for execution.
+	h.rp.ServeHTTP(w, r)
 }

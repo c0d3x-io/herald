@@ -41,5 +41,5 @@ func main() {
 	}
 
 	server.Handle("/", herald)
-	http.ListenAndServe(":8080", server)
+	http.ListenAndServeTLS(":8080", "localhost+2.pem", "localhost+2-key.pem", server)
 }
