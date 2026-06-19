@@ -27,7 +27,7 @@ func New(upstreamURL string, logger *slog.Logger) (*Herald, error) {
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: false,
 			},
 		},
 		Rewrite: func(pr *httputil.ProxyRequest) {
