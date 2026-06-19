@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"github.com/c0d3x-io/herald/internal/cert"
 )
 
 type Herald struct {
@@ -15,13 +17,23 @@ type Herald struct {
 }
 
 // New creates a Herald proxy that forwards all traffic to upstreamURL.
-func New(upstreamURL string, logger *slog.Logger) (*Herald, error) {
+func New(upstreamURL string, caBundlePath string, logger *slog.Logger) (*Herald, error) {
 	targetURL, err := url.Parse(upstreamURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// Core fix: Initialize the ReverseProxy directly.
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12} // only TLS 1.2 above will work
+
+	// Loads pool of cert for proxy TLS handshake
+	if caBundlePath != " " {
+		pool, err := cert.LoadCertPool(caBundlePath)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.RootCAs = pool
+	}
+
 	// This avoids setting the implicit legacy Director field, preventing the runtime panic.
 	rp := &httputil.ReverseProxy{
 		Transport: &http.Transport{
