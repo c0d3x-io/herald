@@ -35,7 +35,7 @@ func main() {
 	})
 
 	// Proxy
-	herald, err := proxy.New(cfg.UpstreamURL, logger)
+	herald, err := proxy.New(cfg.UpstreamURL, cfg.CABundlePath, logger)
 	if err != nil {
 		logger.Error("failed to create proxy", "error", err)
 		os.Exit(1)
@@ -53,7 +53,7 @@ func main() {
 	}
 
 	logger.Info("listening", "addr", cfg.ListenAddr)
-	if err := srv.ListenAndServeTLS("localhost+2.pem", "localhost+2-key.pem"); err != nil {
+	if err := srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil {
 		logger.Error("server faild", "error", err)
 		os.Exit(1)
 	}
