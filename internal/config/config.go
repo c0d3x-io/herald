@@ -35,7 +35,7 @@ func LoadConfig() (*Config, error) {
 		UpstreamURL:  upstream,
 		LogLevel:     getEnv("HERALD_LOG_LEVEL", "info"),
 		CABundlePath: getEnv("HERALD_CA_BUNBLE", ""),
-		TLSCert:      getEnv("HERALD_TLS_Cert", "CaBundle/localhost+2.pem"),
 		TLSKey:       getEnv("HERALD_TLS_KEY", "CaBundle/localhost+2-key.pem"),
+		TLSCert:      getEnv("HERALD_TLS_CERT", "CaBundle/localhost+2.pem"),
 	}, nil
 }
