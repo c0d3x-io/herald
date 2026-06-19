@@ -1,71 +1,165 @@
 # HERALD
- 
-**A security-first AI gateway built for regulated enterprise environments.**
- 
-Enterprise networks restrict direct outbound access from internal workloads to external APIs. HERALD solves this by acting as a controlled egress point, forwarding AI API traffic through existing enterprise proxy chains allowlisted, observable, and auditable.
- 
-HERALD runs anywhere your workload runs. Kubernetes, EC2, ECS, bare metal, or Docker Compose. The deployment model is yours to choose.
- 
----
- 
-## How it works
- 
-```
-Agent → HERALD → Enterprise egress gateway → External AI API
-```
- 
-The agent points its API client at HERALD's URL. HERALD rewrites the host header and forwards the request through your enterprise egress chain. No client code changes required only the endpoint URL changes.
- 
----
-## V1 — Forward Proxy
- 
-V1 is deliberately minimal: host rewrite and passthrough. One job, done correctly.
- 
-### Environment variables
- 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `HERALD_UPSTREAM_URL` | Yes | — | Enterprise egress gateway URL |
-| `HERALD_LISTEN_ADDR` | No | `:8080` | Address HERALD binds to |
-| `HERALD_LOG_LEVEL` | No | `info` | Log verbosity: debug / info / warn / error |
- 
-### Configuring your API client
- 
-```bash
-# Before — client calls the external API directly
-API_ENDPOINT=https://external-api.provider.com
- 
-# After — client calls HERALD, HERALD forwards through your egress chain
-API_ENDPOINT=http://herald.your-host:8080
-```
- 
----
-## Vesion for Herald
- 
-### V2 — Security control plane
-- Allowlist enforcement —> only permitted upstream domains pass
-- Header injection —> add enterprise auth and tracing headers per upstream
-- Credential rotation without restarts
-- mTLS support
-- Request signing for upstream verification
-### V3 — AI security gateway
-- Pluggable pre/post scan hooks —> integrate any AI security scanning control
-- Agent identity and attribution —> per-agent audit trail
-- Token budget enforcement —> hard limits per agent per session
-- Rate limiting by agent identity, user, and model
-- OPA policy integration for declarative access control
-- Structured audit log export to SIEM
----
- 
-## Project
- 
-Part of the [c0d3x-io](https://github.com/c0d3x-io) open source security tooling organisation.
+
+A TLS forward proxy for routing AI API traffic through enterprise egress controls.
+
+HERALD sits between your agent and the public internet. Your agent calls HERALD instead of the external API directly; HERALD terminates TLS, validates the certificate chain, rewrites the host, and forwards the request through your egress path.
 
 ---
-## Contributing
- 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
- 
+
+## How it works
+
+```
+Agent → HERALD (TLS) → Enterprise egress gateway → External AI API
+```
+
+Only the endpoint URL in your agent's config changes — no client code changes required.
+
 ---
- 
-*v0.1.0 — Forward proxy. Runs anywhere.*
+
+## Features
+
+- TLS 1.2 minimum enforced on all connections — no plaintext HTTP mode
+- Real certificate validation — no skip-verify shortcuts
+- Configurable CA trust via `HERALD_CA_BUNDLE` — accepts a single file or a directory of `.pem`/`.crt` files, for local development or private/internal CAs
+- Falls back to the system trust store when no custom CA bundle is set — correct default for hitting public upstream APIs
+- Structured JSON logging
+- Server-level timeouts (read/write/idle) configured by default
+- `/health` endpoint for liveness checks
+- Configuration entirely via environment variables — no config files
+
+---
+
+## Environment variables
+
+```bash
+# .env
+HERALD_UPSTREAM_URL=
+HERALD_LISTEN_ADDR=
+HERALD_LOG_LEVEL=
+HERALD_TLS_KEY=
+HERALD_TLS_CERT=
+HERALD_CA_BUNDLE=
+```
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `HERALD_UPSTREAM_URL` | Yes | — | The upstream API HERALD forwards requests to |
+| `HERALD_LISTEN_ADDR` | No | `:8080` | Address HERALD binds to |
+| `HERALD_LOG_LEVEL` | No | `info` | Log verbosity: debug / info / warn / error |
+| `HERALD_TLS_CERT` | Yes | — | Path to the TLS certificate HERALD serves |
+| `HERALD_TLS_KEY` | Yes | — | Path to the TLS private key HERALD serves |
+| `HERALD_CA_BUNDLE` | No | — | Path to a custom CA file or directory. **Replaces** the system trust store when set — see note below. |
+
+> **`HERALD_CA_BUNDLE` behaviour:** when set, this replaces the system trust store rather than adding to it. Use it for local development (e.g. a `mkcert`-generated CA) or to pin strictly to a private internal CA. Leave it unset in production if your upstream uses a standard publicly-trusted certificate — setting it will break verification against that upstream.
+
+---
+
+## Local setup
+
+### 1. Generate a local TLS certificate
+
+HERALD always serves TLS, including locally. Use [`mkcert`](https://github.com/FiloSottile/mkcert) to generate a certificate your system trusts:
+
+```bash
+brew install mkcert
+mkcert -install
+mkcert localhost 127.0.0.1 ::1
+```
+
+### 2. Create your `.env`
+
+```bash
+HERALD_UPSTREAM_URL=https://your-upstream-api.com
+HERALD_LISTEN_ADDR=:8080
+HERALD_LOG_LEVEL=debug
+HERALD_TLS_CERT=./caBundle/localhost+2.pem
+HERALD_TLS_KEY=./caBundle/localhost+2-key.pem
+HERALD_CA_BUNDLE=
+```
+
+### 3. Run
+
+```bash
+export $(cat .env | xargs) && go run ./herald.go
+```
+
+---
+
+## Running with Docker
+
+### Build
+
+```bash
+docker build -t herald:v0.1.0 .
+```
+
+### .dockerignore
+
+Certs and `.env` must never be copied into the image build context. Confirm you have a `.dockerignore` with at least:
+
+```
+caBundle/
+.git/
+.env
+*.pem
+*.key
+```
+
+### Run — config via env file, certs via volume mount
+
+```bash
+docker run \
+  --env-file .env \
+  -v "$(pwd)/caBundle:/certs:ro" \
+  -e HERALD_TLS_CERT=/certs/localhost+2.pem \
+  -e HERALD_TLS_KEY=/certs/localhost+2-key.pem \
+  -p 8080:8080 \
+  herald:v0.1.0
+```
+
+Certs are mounted read-only at runtime — never baked into the image — so they can be rotated without a rebuild, and a leaked image layer never exposes a private key.
+
+If you're using `HERALD_CA_BUNDLE`, mount that the same way and point the env var at the in-container path:
+
+```bash
+-v "$(pwd)/caBundle:/certs:ro" \
+-e HERALD_CA_BUNDLE=/certs
+```
+
+### Verify it's running
+
+```bash
+curl -k https://localhost:8080/health
+```
+
+---
+
+## Status
+
+Early-stage. TLS handling and CA trust are in place. Allowlist enforcement, graceful shutdown, and request size limits are known gaps, not yet built.
+
+---
+
+## Ideas for later
+
+- Allowlist enforcement on upstream domains
+- Header injection for enterprise auth
+- Pluggable scanning hooks for AI-specific security controls
+- Rate limiting and audit logging
+- Graceful shutdown on SIGTERM
+
+---
+
+## Project
+
+Part of [c0d3x-io](https://github.com/c0d3x-io).
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+*v0.1.0 — TLS-only forward proxy, configurable trust.*
