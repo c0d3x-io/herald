@@ -1,10 +1,13 @@
 package main
 
 import (
-	"github.com/c0d3x-io/herald/internal/config"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
+
+	"github.com/c0d3x-io/herald/internal/config"
+	"github.com/c0d3x-io/herald/internal/proxy"
 )
 
 func main() {
@@ -28,9 +31,30 @@ func main() {
 	server := http.NewServeMux()
 	server.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Herald:ok"))
+		_, _ = w.Write([]byte("Herald:ok")) // ignore error
 	})
 
-	http.ListenAndServe(":8080", server)
+	// Proxy
+	herald, err := proxy.New(cfg.UpstreamURL, cfg.CABundlePath, logger)
+	if err != nil {
+		logger.Error("failed to create proxy", "error", err)
+		os.Exit(1)
+	}
 
+	server.Handle("/", herald)
+
+	// Timeouts - Security Practices
+	srv := &http.Server{
+		Addr:         cfg.ListenAddr,
+		Handler:      server,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  90 * time.Second,
+	}
+
+	logger.Info("listening", "addr", cfg.ListenAddr)
+	if err := srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil {
+		logger.Error("server failed", "error", err)
+		os.Exit(1)
+	}
 }

@@ -9,7 +9,7 @@ Early-stage project. V1 does one thing: rewrite the host and forward the request
 ## What it does
 
 ```
-Agent → HERALD → Enterprise egress gateway → External AI API
+Agent → HERALD (TLS) → Enterprise egress gateway → External AI API
 ```
 
 Your agent points its API client at HERALD instead of the external API directly. HERALD rewrites the host header and forwards the request. No client code changes — only the endpoint URL changes.
@@ -28,7 +28,7 @@ This is a learning project as much as a tool. The code will be rewritten as unde
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `HERALD_UPSTREAM_URL` | Yes | — | Enterprise egress gateway URL |
+| `HERALD_UPSTREAM_URL` | Yes | — | The upstream API HERALD forwards requests to |
 | `HERALD_LISTEN_ADDR` | No | `:8080` | Address HERALD binds to |
 | `HERALD_LOG_LEVEL` | No | `info` | Log verbosity |
 
