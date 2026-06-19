@@ -26,7 +26,7 @@ func New(upstreamURL string, caBundlePath string, logger *slog.Logger) (*Herald,
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12} // only TLS 1.2 above will work
 
 	// Loads pool of cert for proxy TLS handshake
-	if caBundlePath != " " {
+	if caBundlePath != "" {
 		pool, err := cert.LoadCertPool(caBundlePath)
 		if err != nil {
 			return nil, err
@@ -37,10 +37,8 @@ func New(upstreamURL string, caBundlePath string, logger *slog.Logger) (*Herald,
 	// This avoids setting the implicit legacy Director field, preventing the runtime panic.
 	rp := &httputil.ReverseProxy{
 		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: false,
-			},
+			Proxy:           http.ProxyFromEnvironment,
+			TLSClientConfig: tlsConfig,
 		},
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			// SetURL safely routes the request to your target upstream.
