@@ -54,7 +54,7 @@ func main() {
 
 	logger.Info("listening", "addr", cfg.ListenAddr)
 	if err := srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil {
-		logger.Error("server faild", "error", err)
+		logger.Error("server failed", "error", err)
 		os.Exit(1)
 	}
 }
